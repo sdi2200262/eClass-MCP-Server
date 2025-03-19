@@ -1,0 +1,207 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{geometry}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+
+% Colors for highlighting and listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.95}
+
+% Code listing style
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+% Page geometry
+\geometry{a4paper, margin=1in}
+
+% Fix for fancyhdr warnings
+\setlength{\headheight}{14pt}
+\addtolength{\topmargin}{-2pt}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{eClass MCP Client}
+\lhead{Technical Report}
+\rfoot{Page \thepage}
+\lfoot{\today}
+
+% Title formatting
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% Document info
+\title{\Huge \textbf{eClass MCP Server}\\\large Research and Implementation Report}
+\author{Student Project}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{fancy}
+
+\begin{abstract}
+This report documents the development of an eClass MCP (Model Context Protocol) client that enables AI language models to interact with the Open eClass platform. Currently, the client supports the Open eClass instance of the University of Athens, and is able to recieve an authenticated session from the University's external SSO mechanism making use of HTML parsing, retrieving course content, assignments and announcements. We include the research process that guided our implementation, our approach to understanding the Open eClass Template's authentication flow, course management etc, as well as the Python client implementation. The report also highlights the role of AI assistance in the research and development process.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\subsection{Project Overview}
+The eClass MCP server is a tool designed to connect Large Language Models (LLMs), or general AI agents like Cursor, to university instances of the Open eClass platform. It is a practical use of Anthropic's Model Context Protocol (MCP), and could be used to boost academic performance using AI assistance partnered with each college's acadamic resources. The final product is LLM with a fully authenticated session to the eClass instance, allowing it to access course materials, assignments, professor announcements and more.
+
+The project aims to streamline student workflows by bringing eClass content and functionality into the tools students already use, eliminating the need to constantly switch between applications.
+
+\subsection{Project Scope}
+This project's goal is to grant LLMs with the following capabilities:
+
+\begin{itemize}
+    \item Recieve an authenticated session to an eClass instance
+    \item Retrieve course content, assignments and announcements
+    \item Submit assignments
+\end{itemize}
+We will create an pythonic MCP server using Anthropic's Python-sdk and assing an "@mcp.tool" for each of these features.
+
+\section{Research and Planning}
+\subsection{Understanding Open eClass Architecture}
+Our development process began with a thorough research phase examining the Open eClass Template's codebase. Open eClass is an open-source learning management system used by many Greek universities, developed by the Ministry of Education and provided through GitHub from GUnet (Greek Universities Network).
+\\\\
+Our research focused on three key areas:
+\begin{enumerate}
+    \item \textbf{Authentication mechanisms and user session management} - since authentication is required to retrieve data from the platform
+    \item \textbf{Course data structure and access patterns} - for the development of the data retrieval and submission mcp tools
+    \item \textbf{Available API endpoints for programmatic interaction} - would be helpfull to avoid the use of HTML parsing which would complicate our work
+\end{enumerate}
+We cloned the Open eClass repository from GitHub (\url{https://github.com/gunet/openeclass}) and conducted a systematic exploration of its file structure, firstly focusing on authentication-related components. The search was conducted using Cursor's AI Agent Assistant.
+\\\\
+
+\subsection{AI-Assisted Research Approach}
+To efficiently navigate the complex Open eClass codebase - which is a legacy codebase with a lot of legacy code - we employed Cursor's AI Agent assistant to help analyze the authentication flow. The assistant initiated the research by searching the codebase for keywords related to the authentication flow. It then provided a list of key files to examine, including:
+
+\begin{itemize}
+    \item \texttt{/modules/auth/auth.inc.php} - Core authentication functions
+    \item \texttt{/index.php} - Initial login handling
+    \item \texttt{/modules/auth/login\_form.inc.php} - Login form processing
+    \item \texttt{/include/lib/session.class.php} - Session management
+\end{itemize}
+The assistant identified that Open eClass supports multiple authentication methods, with most universities implementing either the native eClass authentication or leveraging institutional Single Sign-On (SSO) services. The current implementation of the eClass MCP server is compatible with the UoA SSO mechanism.
+
+\subsection{Insights from Codebase Analysis and UoA link routes}
+After analyzing the authentication flow, we discovered that:
+
+\begin{enumerate}
+    \item The University of Athens uses a CAS (Central Authentication Service) for SSO in their eClass instance
+    \item Authentication occurs through a multi-step process:
+    \begin{itemize}
+        \item Initial access to the login form page - \texttt{/main/login\_form.php}
+        \item Redirection to the institutional SSO service - \texttt{https://auth.uoa.gr/cas/login}
+        \item Credential validation by the SSO service - \texttt{https://auth.uoa.gr/cas/check}
+        \item Return to eClass with an authenticated session - \texttt{/main/index.php}
+    \end{itemize}
+    \item Each university has the ability to enable API usage for their eClass instance by enabling the \texttt{ext\_apitoken\_enabled} config option. This setting is enabled/disabled server-side. Unfortunately, the UoA eClass instance has it disabled - forcing us to use the HTML parsing method to retrieve/submit data.
+\end{enumerate}
+
+\subsection{Planning the Implementation for the Login / Authentication Process}
+We used a 2-step sequence of prompt-engineering to guide the rest of the research process since we wanted to deepen the models understanding of the codebase and the context of the project. We switched the current AI Agent to use a deep-thinking LLM while retaining all the previous context / knowledge acquired from the first phase of the research. Then we requested a new prompt with a detailed implementation plan from it, and used the prompt to guide the research and implementation process in a new fresh assistant. The prompt included:
+
+\begin{itemize}
+    \item The exact authentication flow for student login (for the UoA eClass instance)
+    \item Key files to examine in the Open eClass codebase 
+    \item Specific questions about session management and programmatic authentication
+    \item A suggested approach to implementing the client
+\end{itemize}
+This use of multiple AI agents helped us avoid hallucinations from overwhelming the assistant's context window, and allowed us to guide the research process in a way that was most effective for our case - focusing on specific PHP modules that are essential for the implementation of the Python client.
+
+\section{Implementation}
+\subsection{Development Approach}
+We implemented the eClass client in Python since Anthropic is providing a dedicated Python SDK for MCP development and its a language we are familiar from our academic work. We used requests for HTTP interactions and BeautifulSoup for HTML parsing. The implementation follows these design principles:
+
+\begin{itemize}
+    \item Modular design with clear separation of concerns
+    \item Comprehensive error handling
+    \item Server will be running locally on the user's machine
+    \item Secure credential management using .env file
+\end{itemize}
+The initial implementation was created with AI assistance based on our research findings, followed by manual corrections to address specific issues that were not handled correctly by the Agent and/or popped up during testing.
+
+\subsection{Login / Authentication Process}
+For different universities, the authentication flow may vary, so the module is designed to be easily customizable. If the university has enabled the API usage, it would be preferred to use the API endpoints instead an HTML parsing method. Our authentication module is hardcoded for the UoA SSO flow:
+
+\begin{enumerate}
+    \item Access the eClass login form at \texttt{/main/login\_form.php}
+    \item Locate and follow the UoA login button using BeautifulSoup (redirects to the CAS SSO service) 
+    \item Submit credentials to the SSO service with required parameters - credentials are retrieved from the .env file, stored locally
+    \item Handle redirection back to eClass after successful authentication 
+    \item Verify successful login by accessing the \texttt{/main/portfolio.php} page
+\end{enumerate}
+The server uses session cookies to maintain authentication state across requests, simulating a browser-based session. Essentially the server is able to "login" to the eClass instance and keep the session alive for until the user or the Assistant logs out manually, or the session expires. We are not spamming the login page with one-time requests. This would not be possible since Open eClass has many abuse protection mechanisms against such activity.
+
+\subsubsection{Human-Led Corrections for the Login / Authentication Process}
+After initial code generation, we identified several critical issues that required correction:
+
+\begin{enumerate}
+    \item The initial implementation attempted to access \texttt{eclass.uoa.gr/index.php} for login, while the actual login form is at \texttt{/main/login\_form.php}
+    \item The implementation didn't account for the SSO authentication flow used by UoA - instead it used the native eClass login form
+    \item The original code lacked proper handling of the execution token required by the CAS login system
+    \item The original code lacked proper error handling
+\end{enumerate}
+These corrections highlight the importance of human oversight in AI-assisted development, especially for applications that interact with real-world systems or servers. These mistakes may be the result of the agent not being able to handle the complexity of the contexted codebase - even though we tried to narrow down the scope of the research to the most relevant parts.\\\\
+For the sake of brevity, we will not include all the human-led corrections for the other features in this report, unless they were of critical importance - except for the MCP integration.
+\subsection{Course Information Retrieval}
+
+\subsubsection{Human-Led Corrections for the Course Information Retrieval}
+
+\subsection{Assignment Retrieval}
+
+\subsubsection{Human-Led Corrections for the Assignment Retrieval}
+
+\subsection{Announcement Monitoring}
+
+\subsubsection{Human-Led Corrections for the Announcement Monitoring}
+
+\subsection{MCP Integration}
+
+\subsubsection{Human-Led Corrections for the MCP Integration}
+
+
+\section{Current Server Tools}
+
+
+\section{Conclusion}
+\appendix
+\vspace{2cm}
+\section*{Development Chat Logs}
+All the chat logs are available in the \texttt{CHAT.md} attached file and are in Markdown format. This is for the sake of transparency and to show the research and implementation process. AI agents return responses in markdown format, so we can take advantage of it in the display of the conversation history. 
+\\\\
+\textbf{Pro tip:} All AI agents return responses in markdown format. It is best practice to provide queries in markdown format (or at least use the markdown formatting options) as well. It would help the LLM to understand the user's intent better as well as understand the context of the conversation and return a more accurate response.
+\end{document} 
